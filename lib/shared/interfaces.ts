@@ -27,3 +27,44 @@ export const RegisterAoRResponse = object({
   txDigest: string(),
 });
 export type RegisterAoRResponse = Infer<typeof RegisterAoRResponse>;
+
+// Interfaces pour la création d'entreprise
+export const CreateCompanyRequest = object({
+  name: string(),
+  country: string(),
+  authority_link: string(),
+});
+export type CreateCompanyRequest = Infer<typeof CreateCompanyRequest>;
+
+export const CreateCompanyResult = object({
+  company_id: string(),
+  badge_id: string(),
+  aor_admin: string(),
+  company_name: coerce(
+    string(),
+    array(integer()),
+    (value) => {
+      if (Array.isArray(value)) {
+        return new TextDecoder().decode(new Uint8Array(value));
+      }
+      return String(value);
+    }
+  ),
+  badge_number: coerce(
+    string(),
+    array(integer()),
+    (value) => {
+      if (Array.isArray(value)) {
+        return new TextDecoder().decode(new Uint8Array(value));
+      }
+      return String(value);
+    }
+  ),
+});
+export type CreateCompanyResult = Infer<typeof CreateCompanyResult>;
+
+export const CreateCompanyResponse = object({
+  ...CreateCompanyResult.schema,
+  txDigest: string(),
+});
+export type CreateCompanyResponse = Infer<typeof CreateCompanyResponse>;

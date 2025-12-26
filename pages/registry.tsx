@@ -5,6 +5,7 @@ import { getSuiVisionTransactionUrl } from "@/lib/hooks/sui";
 import { useZkLoginSession } from "@shinami/nextjs-zklogin/client";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
 /**
  * Page pour enregistrer un AoR dans le registre global
@@ -15,6 +16,7 @@ interface RegistryStatus {
   admin: string | null;
   name: string | null;
   registryId: string;
+  companyId: string | null;
 }
 
 export default function RegistryPage() {
@@ -82,7 +84,41 @@ export default function RegistryPage() {
 
   return (
     <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-      <h1>Registre Global AoR</h1>
+      {/* Header avec navigation */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+        <h1 style={{ margin: 0 }}>Registre Global AoR</h1>
+        <div style={{ display: "flex", gap: "1rem" }}>
+          <Link
+            href="/aor-dashboard"
+            style={{
+              display: "inline-block",
+              padding: "0.75rem 1.5rem",
+              backgroundColor: "#28a745",
+              color: "white",
+              textDecoration: "none",
+              borderRadius: "4px",
+              fontSize: "1rem",
+              fontWeight: "bold",
+            }}
+          >
+            📊 Dashboard
+          </Link>
+          <Link
+            href="/"
+            style={{
+              display: "inline-block",
+              padding: "0.75rem 1.5rem",
+              backgroundColor: "#6c757d",
+              color: "white",
+              textDecoration: "none",
+              borderRadius: "4px",
+              fontSize: "1rem",
+            }}
+          >
+            Accueil
+          </Link>
+        </div>
+      </div>
 
       {/* Afficher l'état actuel du registre */}
       {isAlreadyRegistered && registryStatus && (

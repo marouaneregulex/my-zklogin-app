@@ -119,6 +119,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 - Formulaire pour enregistrer un AoR (une seule fois)
 - Indique si l'utilisateur actuel est l'admin
 - Affiche les informations du wallet connecté
+- Navigation vers le dashboard
 
 **Hooks utilisés** :
 - `useZkLoginSession()` : Session zkLogin
@@ -130,6 +131,28 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 2. Affiche les informations (admin, nom, état)
 3. Permet l'enregistrement si aucun AoR n'est enregistré
 4. Désactive le formulaire si déjà enregistré
+
+#### `pages/aor-dashboard.tsx`
+**Rôle** : Dashboard de l'AoR pour gérer son compte et son entreprise
+
+**Fonctionnalités** :
+- Affiche les informations du compte (provider, wallet)
+- Affiche l'état du registre (nom, admin)
+- Formulaire pour créer une entreprise (seulement pour l'admin)
+- Affiche les informations de l'entreprise (si créée)
+- Affiche les informations du badge public (si créé)
+- Liens vers SuiVision pour explorer les objets
+
+**Hooks utilisés** :
+- `useZkLoginSession()` : Session zkLogin
+- `useQuery()` : Récupération de l'état du registre et de l'entreprise
+- `useCreateCompanyMutation()` : Mutation pour créer une entreprise
+
+**Flux** :
+1. Charge l'état du registre via `/api/registry-status`
+2. Charge l'état de l'entreprise via `/api/company-status`
+3. Affiche les informations (compte, registre, entreprise, badge)
+4. Permet la création d'entreprise si l'utilisateur est l'admin et qu'aucune entreprise n'existe
 
 #### `pages/auth/` - Pages d'Authentification
 
@@ -175,6 +198,29 @@ const registerMutation = useRegisterAoRMutation();
 
 await registerMutation.mutateAsync({
   name: "mon-aor",
+  keyPair: localSession.ephemeralKeyPair
+});
+```
+
+##### `useCreateCompanyMutation()`
+**Type** : `UseMutationResult<CompanyCreatedResponse, ApiError, CreateCompanyRequest & WithKeyPair>`
+
+**Fonctionnalités** :
+- Gère la mutation complète pour créer une entreprise
+- Utilise `apiTxExecMutationFn` qui gère automatiquement :
+  1. Appel à `/api/create-company/tx` (construction de la transaction)
+  2. Signature avec l'ephemeral key pair côté client
+  3. Appel à `/api/create-company/exec` (exécution de la transaction)
+- Retourne l'état de la mutation avec les IDs de l'entreprise et du badge
+
+**Utilisation** :
+```typescript
+const createCompanyMutation = useCreateCompanyMutation();
+
+await createCompanyMutation.mutateAsync({
+  name: "Mon Entreprise",
+  country: "France",
+  authority_link: "https://example.com",
   keyPair: localSession.ephemeralKeyPair
 });
 ```
@@ -271,9 +317,9 @@ await registerMutation.mutateAsync({
 
 **Fonctionnalités** :
 1. Récupère l'objet `GlobalRegistry` depuis la blockchain
-2. Lit les champs `aor_admin` et `aor_name`
+2. Lit les champs `aor_admin`, `aor_name`, et `company_id`
 3. Convertit `aor_name` (bytes) en string
-4. Retourne l'état (isRegistered, admin, name)
+4. Retourne l'état (isRegistered, admin, name, companyId)
 
 **Réponse** :
 ```typescript
@@ -282,12 +328,97 @@ await registerMutation.mutateAsync({
   admin: string | null;
   name: string | null;
   registryId: string;
+  companyId: string | null;
 }
 ```
 
 **Utilisation** :
 - Appelé par le frontend pour afficher l'état du registre
 - Pas d'authentification requise (lecture seule)
+
+#### `pages/api/create-company/[...api].ts`
+**Rôle** : API pour créer une entreprise et son badge
+
+**Routes gérées** :
+- `POST /api/create-company/tx` : Construit la transaction Sui
+- `POST /api/create-company/exec` : Exécute la transaction signée
+
+**Fonctionnalités** :
+
+##### `buildTx` : Construction de la transaction
+1. Valide la requête (`CreateCompanyRequest`)
+2. Vérifie que `GLOBAL_REGISTRY_ID` est configuré
+3. Vérifie que l'utilisateur est l'AoR admin
+4. Convertit les champs en `vector<u8>` (bytes)
+5. Construit la transaction Sui avec `buildGaslessTransaction`
+6. Appelle `create_company` sur le smart contract
+
+##### `parseTxRes` : Parsing de la réponse
+1. Cherche l'événement `CompanyCreated` dans la réponse
+2. Parse l'événement (company_id, badge_id, aor_admin, etc.)
+3. Convertit les champs bytes en strings
+4. Retourne la réponse avec le digest de la transaction
+
+**Sécurité** :
+- Requiert une session zkLogin active
+- Vérifie que l'utilisateur est l'AoR admin
+- Validation des données d'entrée
+
+#### `pages/api/company-status.ts`
+**Rôle** : API pour récupérer les informations d'une entreprise et son badge
+
+**Route** : `GET /api/company-status?address=<aor_address>`
+
+**Fonctionnalités** :
+1. Récupère l'entreprise via plusieurs méthodes (par ordre de priorité) :
+   - Via `company_id` dans `GlobalRegistry` (méthode principale)
+   - Via `getOwnedObjects` avec le type `Company`
+   - Via les événements `CompanyCreated`
+2. Parse les champs de l'entreprise (name, country, authority_link)
+3. Récupère le badge public par son ID
+4. Parse les champs du badge (company_name, badge_number)
+5. Retourne les informations complètes
+
+**Réponse** :
+```typescript
+{
+  hasCompany: boolean;
+  company: {
+    id: string;
+    name: string;
+    country: string;
+    authority_link: string;
+    aor_admin: string;
+    badge_id: string;
+    created_at: number;
+  } | null;
+  badge: {
+    id: string;
+    company_name: string;
+    badge_number: string;
+    aor_admin: string;
+    issued_at: number;
+  } | null;
+}
+```
+
+**Utilisation** :
+- Appelé par le dashboard pour afficher l'entreprise et le badge
+- Pas d'authentification requise (lecture publique)
+
+#### `pages/api/company-badge.ts`
+**Rôle** : API pour récupérer un badge public par son ID
+
+**Route** : `GET /api/company-badge?badgeId=<badge_id>`
+
+**Fonctionnalités** :
+1. Récupère l'objet `CompanyBadge` par son ID
+2. Parse les champs du badge
+3. Retourne les informations du badge
+
+**Utilisation** :
+- Permet de vérifier un badge publiquement
+- Pas d'authentification requise (objet public)
 
 ### Clients Backend (`lib/api/`)
 
@@ -421,6 +552,7 @@ public struct GlobalRegistry has key, store {
     id: sui::object::UID,
     aor_admin: std::option::Option<address>,
     aor_name: std::option::Option<vector<u8>>,
+    company_id: std::option::Option<sui::object::ID>,
 }
 ```
 
@@ -428,6 +560,45 @@ public struct GlobalRegistry has key, store {
 - `key` : Peut être stocké sur la blockchain
 - `store` : Peut être transféré
 - Objet partagé : Accessible et modifiable par tous
+- `company_id` : Stocke l'ID de l'entreprise créée par l'AoR (une seule entreprise par AoR)
+
+##### `Company`
+**Type** : Objet possédé (Owned Object)
+```move
+public struct Company has key, store {
+    id: sui::object::UID,
+    name: vector<u8>,              // Nom de l'entreprise
+    country: vector<u8>,           // Pays
+    authority_link: vector<u8>,   // Lien d'autorité
+    aor_admin: address,            // L'AoR propriétaire
+    badge_id: sui::object::ID,    // ID du badge public
+    created_at: u64,              // Timestamp
+}
+```
+
+**Propriétés** :
+- `key` : Peut être stocké sur la blockchain
+- `store` : Peut être transféré
+- Objet possédé : Appartient à l'adresse `aor_admin`
+- Une seule entreprise par AoR (vérifié dans `create_company`)
+
+##### `CompanyBadge`
+**Type** : Objet partagé (Shared Object) - Public
+```move
+public struct CompanyBadge has key {
+    id: sui::object::UID,
+    company_name: vector<u8>,      // Nom de l'entreprise
+    badge_number: vector<u8>,     // Numéro unique du badge
+    aor_admin: address,            // L'AoR propriétaire
+    issued_at: u64,                // Date d'émission
+}
+```
+
+**Propriétés** :
+- `key` : Peut être stocké sur la blockchain
+- **Pas de `store`** : Ne peut pas être transféré (objet partagé permanent)
+- **Objet partagé** : Accessible publiquement par tous (lecture seule)
+- **Usage** : Vérification publique de l'identité de l'entreprise
 
 ##### `AoRRegistered`
 **Type** : Événement émis lors de l'enregistrement
@@ -435,6 +606,18 @@ public struct GlobalRegistry has key, store {
 public struct AoRRegistered has copy, drop, store {
     admin: address,
     name: vector<u8>,
+}
+```
+
+##### `CompanyCreated`
+**Type** : Événement émis lors de la création d'une entreprise
+```move
+public struct CompanyCreated has copy, drop, store {
+    company_id: sui::object::ID,
+    badge_id: sui::object::ID,
+    aor_admin: address,
+    company_name: vector<u8>,
+    badge_number: vector<u8>,
 }
 ```
 
@@ -461,6 +644,35 @@ public struct AoRRegistered has copy, drop, store {
 ##### `get_name(reg)`
 **Rôle** : Lit le nom actuel (si enregistré)
 - Retourne `Option<vector<u8>>`
+
+##### `get_company_id(reg)`
+**Rôle** : Lit l'ID de l'entreprise (si créée)
+- Retourne `Option<ID>`
+
+##### `create_company(reg, name, country, authority_link, ctx)`
+**Rôle** : Crée une entreprise et son badge public
+- **Contraintes** :
+  - Seul l'AoR admin peut créer une entreprise
+  - Une seule entreprise par AoR (vérifié avec `assert`)
+- **Actions** :
+  1. Vérifie que l'AoR est enregistré
+  2. Vérifie que le sender est l'AoR admin
+  3. Vérifie qu'aucune entreprise n'existe déjà
+  4. Génère un numéro de badge unique (basé sur timestamp)
+  5. Crée le badge public (shared object)
+  6. Crée l'entreprise (owned object)
+  7. Stocke l'ID de l'entreprise dans `GlobalRegistry`
+  8. Transfère l'entreprise à l'AoR
+  9. Émet l'événement `CompanyCreated`
+
+##### `get_company_info(company)`
+**Rôle** : Lit les informations d'une entreprise
+- Retourne `(name, country, authority_link, aor_admin, badge_id)`
+
+##### `get_badge_info(badge)`
+**Rôle** : Lit les informations d'un badge (public)
+- Retourne `(company_name, badge_number, aor_admin, issued_at)`
+- **Accessible à tous** : Le badge est un objet partagé
 
 ---
 
@@ -591,10 +803,120 @@ public struct AoRRegistered has copy, drop, store {
 1. Page `/registry` se charge
 2. Frontend appelle `useQuery()` avec `/api/registry-status`
 3. Backend lit l'objet `GlobalRegistry` depuis Sui
-4. Backend parse les champs (`aor_admin`, `aor_name`)
+4. Backend parse les champs (`aor_admin`, `aor_name`, `company_id`)
 5. Backend convertit `aor_name` (bytes) en string
-6. Backend retourne l'état (isRegistered, admin, name)
+6. Backend retourne l'état (isRegistered, admin, name, companyId)
 7. Frontend affiche les informations
+
+### 4. Création d'une entreprise et badge
+
+```
+┌─────────┐      ┌──────────────┐      ┌──────────┐
+│ Client  │─────▶│ /api/        │─────▶│ Sui      │
+│ (React) │      │ create-      │      │ Blockchain│
+│         │      │ company/tx   │      │          │
+└─────────┘      └──────────────┘      └──────────┘
+      │                  │
+      │                  ▼
+      │         ┌─────────────────┐
+      │         │ Transaction     │
+      │         │ Block Built     │
+      │         └─────────────────┘
+      │                  │
+      │                  ▼
+      │         ┌─────────────────┐
+      │         │ Client Signs    │
+      │         │ (ephemeral key) │
+      │         └─────────────────┘
+      │                  │
+      ▼                  ▼
+┌─────────┐      ┌──────────────┐      ┌──────────┐
+│ Client  │─────▶│ /api/        │─────▶│ Gas      │
+│ Signs   │      │ create-      │      │ Station  │
+│         │      │ company/exec │      │          │
+└─────────┘      └──────────────┘      └──────────┘
+      │                  │                    │
+      │                  ▼                    ▼
+      │         ┌─────────────────┐  ┌──────────────┐
+      │         │ zkLogin         │  │ Transaction  │
+      │         │ Signature       │  │ Executed     │
+      │         │ Assembled       │  │ (Sponsored)  │
+      │         └─────────────────┘  └──────────────┘
+      │                  │                    │
+      │                  ▼                    ▼
+      │         ┌─────────────────┐  ┌──────────────┐
+      │         │ Company & Badge │  │ Event        │
+      │         │ Created         │  │ (CompanyCreated)│
+      │         └─────────────────┘  └──────────────┘
+      │                  │
+      ▼                  ▼
+┌─────────┐      ┌──────────────┐
+│ UI      │◀─────│ Success      │
+│ Updated │      │ Displayed    │
+└─────────┘      └──────────────┘
+```
+
+**Étapes détaillées** :
+1. Utilisateur remplit le formulaire (nom, pays, lien d'autorité)
+2. Frontend appelle `useCreateCompanyMutation().mutateAsync()`
+3. Hook appelle `/api/create-company/tx` avec les données
+4. Backend vérifie que l'utilisateur est l'AoR admin
+5. Backend construit la transaction Sui
+6. Frontend signe avec l'ephemeral key pair
+7. Frontend appelle `/api/create-company/exec` avec la signature
+8. Backend assemble la signature zkLogin complète
+9. Backend exécute la transaction (sponsorisée)
+10. Smart contract crée :
+    - Un objet `Company` (owned par l'AoR)
+    - Un objet `CompanyBadge` (shared, public)
+    - Stocke l'ID de l'entreprise dans `GlobalRegistry`
+11. Événement `CompanyCreated` émis
+12. Backend parse l'événement et retourne les IDs
+13. Frontend affiche le succès avec les liens SuiVision
+
+### 5. Récupération d'une entreprise et badge
+
+```
+┌─────────┐      ┌──────────────┐      ┌──────────┐
+│ Client  │─────▶│ /api/        │─────▶│ Sui      │
+│ (React) │      │ company-     │      │ Blockchain│
+│         │      │ status       │      │          │
+└─────────┘      └──────────────┘      └──────────┘
+      │                  │                    │
+      │                  ▼                    ▼
+      │         ┌─────────────────┐  ┌──────────────┐
+      │         │ Read            │  │ GlobalRegistry│
+      │         │ GlobalRegistry  │  │ (company_id) │
+      │         └─────────────────┘  └──────────────┘
+      │                  │                    │
+      │                  ▼                    ▼
+      │         ┌─────────────────┐  ┌──────────────┐
+      │         │ Read Company    │  │ Read Badge   │
+      │         │ Object          │  │ (Shared)     │
+      │         └─────────────────┘  └──────────────┘
+      │                  │                    │
+      │                  ▼                    ▼
+      │         ┌─────────────────┐  ┌──────────────┐
+      │         │ Parse Fields   │  │ Parse Fields │
+      │         │ (bytes to str)  │  │ (bytes to str)│
+      │         └─────────────────┘  └──────────────┘
+      │                  │
+      ▼                  ▼
+┌─────────┐      ┌──────────────┐
+│ UI      │◀─────│ Company &    │
+│ Updated │      │ Badge Info   │
+└─────────┘      └──────────────┘
+```
+
+**Étapes** :
+1. Dashboard se charge
+2. Frontend appelle `/api/company-status?address=<aor_address>`
+3. Backend récupère `company_id` depuis `GlobalRegistry`
+4. Backend lit l'objet `Company` par son ID
+5. Backend lit l'objet `CompanyBadge` (shared) par `badge_id`
+6. Backend parse et convertit les champs bytes en strings
+7. Backend retourne les informations complètes
+8. Frontend affiche l'entreprise et le badge
 
 ---
 
@@ -724,6 +1046,71 @@ move/sources/my-contract.move
 
 ---
 
+## 🏅 Badge Public - Cas d'Usage
+
+### Qu'est-ce que le Badge ?
+
+Le **CompanyBadge** est un objet public (shared object) sur la blockchain Sui qui sert de **preuve d'identité publique** pour une entreprise enregistrée.
+
+### Contenu du Badge
+
+- **`company_name`** : Nom de l'entreprise (pour affichage public)
+- **`badge_number`** : Numéro unique du badge (généré automatiquement)
+- **`aor_admin`** : Adresse de l'AoR propriétaire
+- **`issued_at`** : Timestamp de création (preuve temporelle)
+
+### Propriétés
+
+- **Public** : Accessible à tous sans authentification
+- **Immuable** : Les données ne peuvent pas être modifiées après création
+- **Vérifiable** : N'importe qui peut vérifier l'authenticité via l'ID du badge
+- **Traçable** : Historique complet sur la blockchain
+
+### Cas d'Usage
+
+#### 1. Vérification Publique d'Identité
+- N'importe qui peut vérifier qu'une entreprise est enregistrée
+- Accès public via l'ID du badge
+- Preuve d'existence et d'authenticité
+
+#### 2. Page Publique de l'Entreprise
+- Créer une page publique (sans authentification) qui affiche :
+  - Les informations du badge
+  - Le statut de l'entreprise
+  - Un lien vers le badge sur SuiVision
+
+#### 3. Recherche et Découverte
+- Permettre de rechercher des entreprises par nom
+- Lister toutes les entreprises enregistrées
+- Filtrer par pays ou date d'émission
+
+#### 4. Vérification dans d'Autres Applications
+- D'autres dApps peuvent lire le badge pour vérifier l'identité
+- Intégration avec des systèmes tiers
+- Preuve d'authenticité pour des partenariats
+
+#### 5. Historique et Traçabilité
+- Le badge est immuable sur la blockchain
+- Historique complet des transactions
+- Preuve de l'existence à un moment donné
+
+### API Publique pour le Badge
+
+#### `GET /api/company-badge?badgeId=<id>`
+- Récupère un badge par son ID
+- Pas d'authentification requise
+- Retourne toutes les informations publiques du badge
+
+### Fonctionnalités Futures Possibles
+
+1. **Page publique de recherche de badges** : Rechercher et afficher tous les badges
+2. **QR Code du badge** : Générer un QR code pour vérification rapide
+3. **Export PDF du badge** : Télécharger un certificat PDF
+4. **Vérification de badge** : Entrer un badge_id et afficher les infos
+5. **API publique REST** : Endpoint public pour intégration tierce
+
+---
+
 ## 📝 Notes Importantes
 
 1. **Séparation claire** : Frontend (navigateur) vs Backend (serveur)
@@ -731,6 +1118,8 @@ move/sources/my-contract.move
 3. **zkLogin** : Authentification sans clé privée, basée sur OAuth
 4. **Transactions** : Toujours sponsorisées via Gas Station
 5. **Smart Contracts** : Déployés une fois, utilisés par tous
+6. **Badge Public** : Objet partagé accessible à tous, immuable
+7. **Une entreprise par AoR** : Limitation imposée par le smart contract
 
 ---
 

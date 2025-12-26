@@ -8,20 +8,22 @@ import type { NextApiRequest, NextApiResponse } from "next";
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
-) {
+): Promise<void> {
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const GLOBAL_REGISTRY_ID = process.env.GLOBAL_REGISTRY_ID;
-  if (!GLOBAL_REGISTRY_ID) {
-    return res.status(500).json({
-      error: "GLOBAL_REGISTRY_ID not configured",
-    });
+    res.status(405).json({ error: "Method not allowed" });
+    return;
   }
 
   try {
-    // Récupérer l'objet GlobalRegistry
+    const GLOBAL_REGISTRY_ID = process.env.GLOBAL_REGISTRY_ID;
+    if (!GLOBAL_REGISTRY_ID) {
+      res.status(500).json({
+        error: "GLOBAL_REGISTRY_ID not configured",
+      });
+      return;
+    }
+
+    // Récupérer l'objet GlobalRegistry depuis la blockchain
     const registryObject = await sui.getObject({
       id: GLOBAL_REGISTRY_ID,
       options: {
@@ -31,26 +33,28 @@ export default async function handler(
     });
 
     if (!registryObject.data) {
-      return res.status(404).json({
+      res.status(404).json({
         error: "GlobalRegistry object not found",
       });
+      return;
     }
 
     const content = registryObject.data.content;
     if (!content || content.dataType !== "moveObject") {
-      return res.status(500).json({
+      res.status(500).json({
         error: "Invalid GlobalRegistry object format",
       });
+      return;
     }
 
     const fields = content.fields as {
       aor_admin?: string | { vec: string[] } | null;
       aor_name?: number[] | { vec: number[] } | null;
+      company_id?: string | { id: string } | { vec: string[] } | null;
       id?: { id: string };
     };
 
     // Vérifier si un AoR est déjà enregistré
-    // aor_admin peut être une string directe ou un objet avec vec
     let adminValue: string | null = null;
     if (fields.aor_admin) {
       if (typeof fields.aor_admin === "string") {
@@ -80,20 +84,31 @@ export default async function handler(
         // Convertir le vector<u8> en string
         name = new TextDecoder().decode(new Uint8Array(nameBytes));
       }
+
+      res.status(200).json({
+        isRegistered: true,
+        admin,
+        name,
+        registryId: GLOBAL_REGISTRY_ID,
+      });
+      return;
     }
 
-    return res.status(200).json({
-      isRegistered,
-      admin,
-      name,
+    // Aucun AoR enregistré
+    res.status(200).json({
+      isRegistered: false,
+      admin: null,
+      name: null,
       registryId: GLOBAL_REGISTRY_ID,
+      companyId: null,
     });
   } catch (error) {
-    console.error("Error fetching registry status:", error);
-    return res.status(500).json({
-      error: "Failed to fetch registry status",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    console.error("Error in registry-status handler:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Failed to fetch registry status",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
-

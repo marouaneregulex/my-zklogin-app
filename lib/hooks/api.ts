@@ -10,6 +10,8 @@ import {
 import {
   RegisterAoRRequest,
   RegisterAoRResponse,
+  CreateCompanyRequest,
+  CreateCompanyResponse,
 } from "../shared/interfaces";
 
 /**
@@ -25,6 +27,23 @@ export function useRegisterAoRMutation(): UseMutationResult<
       baseUri: () => "/api/register-aor",
       body: ({ keyPair, ...req }) => req,
       resultSchema: RegisterAoRResponse,
+    }),
+  });
+}
+
+/**
+ * Mutation pour créer une entreprise
+ */
+export function useCreateCompanyMutation(): UseMutationResult<
+  CreateCompanyResponse,
+  ApiError,
+  CreateCompanyRequest & WithKeyPair
+> {
+  return useMutation({
+    mutationFn: apiTxExecMutationFn({
+      baseUri: () => "/api/create-company",
+      body: ({ keyPair, ...req }) => req,
+      resultSchema: CreateCompanyResponse,
     }),
   });
 }

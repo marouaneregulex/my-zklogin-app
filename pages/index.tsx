@@ -1,16 +1,43 @@
+"use client";
+
 import { getSuiVisionAccountUrl } from "@/lib/hooks/sui";
 import { AUTH_API_BASE, LOGIN_PAGE_PATH } from "@shinami/nextjs-zklogin";
 import { useZkLoginSession } from "@shinami/nextjs-zklogin/client";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 // This is a publically accessible page, displaying optional contents for signed-in users.
+interface RegistryStatus {
+  isRegistered: boolean;
+  admin: string | null;
+  name: string | null;
+  registryId: string;
+  companyId: string | null;
+}
+
 export default function Index() {
   const { user, isLoading } = useZkLoginSession();
 
-  if (isLoading) return <p>Loading zkLogin session...</p>;
+  // Récupérer l'état du registre
+  const { data: registryStatus, isLoading: isLoadingStatus } = useQuery<RegistryStatus>({
+    queryKey: ["registry-status"],
+    queryFn: async () => {
+      const resp = await fetch("/api/registry-status");
+      if (resp.status !== 200) {
+        throw new Error(`Failed to fetch registry status. ${resp.status}`);
+      }
+      return resp.json();
+    },
+    enabled: !!user, // Seulement si l'utilisateur est connecté
+  });
+
+  if (isLoading || (user && isLoadingStatus)) {
+    return <p>Chargement...</p>;
+  }
 
   if (user) {
-    // Signed-in experience.
+
+    // Signed-in experience - Première connexion (pas d'AoR créé)
     return (
       <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
         <h1>Hello, {user.oidProvider} user! 👋</h1>
@@ -44,20 +71,36 @@ export default function Index() {
           </div>
         </div>
 
-        <div style={{ marginTop: "2rem" }}>
+        <div style={{ marginTop: "2rem", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
           <Link 
-            href="/registry"
+            href="/aor-dashboard"
             style={{ 
               display: "inline-block", 
               padding: "0.75rem 1.5rem", 
-              backgroundColor: "#0070f3", 
+              backgroundColor: "#28a745", 
               color: "white", 
               textDecoration: "none", 
               borderRadius: "4px"
             }}
           >
-            Registre AoR (Tanzanite)
+            Dashboard AoR
           </Link>
+          {/* Afficher le bouton seulement si aucun AoR n'est enregistré ET que le statut est chargé */}
+          {!isLoadingStatus && !registryStatus?.isRegistered && (
+            <Link 
+              href="/registry"
+              style={{ 
+                display: "inline-block", 
+                padding: "0.75rem 1.5rem", 
+                backgroundColor: "#0070f3", 
+                color: "white", 
+                textDecoration: "none", 
+                borderRadius: "4px"
+              }}
+            >
+              Enregistrer un AoR
+            </Link>
+          )}
         </div>
 
         <div style={{ marginTop: "2rem" }}>
