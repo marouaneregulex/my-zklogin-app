@@ -6,10 +6,11 @@ import {
   TWITCH_CLIENT_ID,
 } from "@/lib/shared/openid";
 import { authHandler } from "@shinami/nextjs-zklogin/server/pages";
+import type { NextApiRequest, NextApiResponse } from "next";
 
 // This handler should be installed at route "/api/auth/[...api]".
 // If you need to use a different path, set env NEXT_PUBLIC_AUTH_API_BASE to override the default.
-export default authHandler(
+const handler = authHandler(
   sui, // Alternatively, you can use mystenSui
   zkw, // Alternatively, you can use mystenSaltProvider
   zkp, // Alternatively, you can use mystenProver
@@ -20,3 +21,21 @@ export default authHandler(
     apple: APPLE_CLIENT_ID ? [APPLE_CLIENT_ID] : undefined,
   },
 );
+
+// Wrap handler to log errors for debugging
+export default async function (
+  req: NextApiRequest,
+  res: NextApiResponse,
+): Promise<void> {
+  try {
+    await handler(req, res);
+  } catch (error) {
+    console.error("Auth handler error:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}

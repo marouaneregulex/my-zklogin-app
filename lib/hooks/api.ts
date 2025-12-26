@@ -6,53 +6,26 @@ import {
 import {
   UseMutationResult,
   useMutation,
-  useQuery,
-  useQueryClient,
 } from "@tanstack/react-query";
-import { mask } from "superstruct";
 import {
-  AddRequest,
-  AddResponse,
-  RecentTxsResponse,
+  RegisterAoRRequest,
+  RegisterAoRResponse,
 } from "../shared/interfaces";
 
 /**
- * An example mutation to execute a Sui transaction.
- *
- * The mutation presents itself as a simple request / response. Under the hood, it's done in 3 steps:
- * - Call /api/add/tx to construct a sponsored transaction block.
- * - Sign the transaction block with the local ephemeral key pair.
- * - Call /api/add/exec to assemble the zkLogin signature and execute the signed transaction block.
+ * Mutation pour enregistrer un AoR dans le registre global
  */
-export function useAddMutation(): UseMutationResult<
-  AddResponse,
+export function useRegisterAoRMutation(): UseMutationResult<
+  RegisterAoRResponse,
   ApiError,
-  AddRequest & WithKeyPair
+  RegisterAoRRequest & WithKeyPair
 > {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: apiTxExecMutationFn({
-      baseUri: () => "/api/add",
+      baseUri: () => "/api/register-aor",
       body: ({ keyPair, ...req }) => req,
-      resultSchema: AddResponse,
+      resultSchema: RegisterAoRResponse,
     }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["api", "recent_txs"] });
-    },
   });
 }
 
-/**
- * An example query to fetch recent transactions from the user's wallet address.
- */
-export function useRecentTxsQuery() {
-  return useQuery({
-    queryKey: ["api", "recent_txs"],
-    queryFn: async () => {
-      const resp = await fetch("/api/recent_txs");
-      if (resp.status !== 200)
-        throw new Error(`Failed to fetch recent txs. ${resp.status}`);
-      return mask(await resp.json(), RecentTxsResponse);
-    },
-  });
-}

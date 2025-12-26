@@ -37,3 +37,7 @@ next-env.d.ts
 
 # dev server https
 /certificates/
+
+# Move build artifacts
+move/build/
+move/.move/
