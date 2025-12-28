@@ -1,12 +1,10 @@
 "use client";
 
-import { useCreateCompanyMutation } from "@/lib/hooks/api";
-import { getSuiVisionAccountUrl, getSuiVisionObjectUrl, getSuiVisionTransactionUrl } from "@/lib/hooks/sui";
+import { getSuiVisionAccountUrl, getSuiVisionObjectUrl } from "@/lib/hooks/sui";
 import { AUTH_API_BASE } from "@shinami/nextjs-zklogin";
 import { useZkLoginSession } from "@shinami/nextjs-zklogin/client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState, useEffect } from "react";
 
 /**
  * Dashboard AoR - Affiche toutes les informations du compte et du registre
@@ -16,38 +14,13 @@ interface RegistryStatus {
   admin: string | null;
   name: string | null;
   registryId: string;
-  companyId: string | null;
-}
-
-interface CompanyStatus {
-  hasCompany: boolean;
-  company: {
-    id: string;
-    name: string | null;
-    country: string | null;
-    authority_link: string | null;
-    aor_admin: string;
-    badge_id: string | null;
-    created_at: string | null;
-  } | null;
-  badge: {
-    id: string;
-    company_name: string | null;
-    badge_number: string | null;
-    aor_admin: string;
-    issued_at: string | null;
-  } | null;
 }
 
 export default function AoRDashboard() {
-  const { user, isLoading: sessionLoading, localSession } = useZkLoginSession();
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [companyName, setCompanyName] = useState("");
-  const [companyCountry, setCompanyCountry] = useState("");
-  const [companyAuthorityLink, setCompanyAuthorityLink] = useState("");
+  const { user, isLoading: sessionLoading } = useZkLoginSession();
 
   // Récupérer l'état du registre
-  const { data: registryStatus, isLoading: isLoadingStatus, error: registryError } = useQuery<RegistryStatus>({
+  const { data: registryStatus, isLoading: isLoadingStatus } = useQuery<RegistryStatus>({
     queryKey: ["registry-status"],
     queryFn: async () => {
       const resp = await fetch("/api/registry-status");
@@ -59,62 +32,9 @@ export default function AoRDashboard() {
     },
   });
 
-  // Récupérer l'état de l'entreprise (seulement si l'utilisateur est l'admin)
   const isAdmin = user && registryStatus?.admin ? user.wallet.toLowerCase() === registryStatus.admin.toLowerCase() : false;
-  const { data: companyStatus, isLoading: isLoadingCompany, refetch: refetchCompany, error: companyError } = useQuery<CompanyStatus>({
-    queryKey: ["company-status", user?.wallet],
-    queryFn: async () => {
-      if (!user?.wallet) throw new Error("No wallet address");
-      const resp = await fetch(`/api/company-status?address=${user.wallet}`);
-      if (resp.status !== 200) {
-        const errorData = await resp.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to fetch company status. ${resp.status}`);
-      }
-      const data = await resp.json();
-      console.log("Company status response:", data);
-      return data;
-    },
-    enabled: !!user && isAdmin,
-  });
 
-  // Mutation pour créer une entreprise
-  const createCompanyMutation = useCreateCompanyMutation();
-
-  // Réinitialiser le formulaire après succès
-  useEffect(() => {
-    if (createCompanyMutation.isSuccess) {
-      setShowCreateForm(false);
-      setCompanyName("");
-      setCompanyCountry("");
-      setCompanyAuthorityLink("");
-      void refetchCompany();
-    }
-  }, [createCompanyMutation.isSuccess, refetchCompany]);
-
-  const handleCreateCompany = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!companyName.trim() || !companyCountry.trim() || !companyAuthorityLink.trim()) {
-      alert("Veuillez remplir tous les champs");
-      return;
-    }
-    if (!localSession?.ephemeralKeyPair) {
-      alert("Session invalide");
-      return;
-    }
-
-    try {
-      await createCompanyMutation.mutateAsync({
-        name: companyName.trim(),
-        country: companyCountry.trim(),
-        authority_link: companyAuthorityLink.trim(),
-        keyPair: localSession.ephemeralKeyPair,
-      });
-    } catch (error) {
-      console.error("Erreur lors de la création de l'entreprise:", error);
-    }
-  };
-
-  if (sessionLoading || isLoadingStatus || (isAdmin && isLoadingCompany)) {
+  if (sessionLoading || isLoadingStatus) {
     return (
       <div style={{ padding: "2rem", textAlign: "center" }}>
         <p>Chargement du dashboard...</p>
@@ -462,283 +382,6 @@ export default function AoRDashboard() {
         )}
       </div>
 
-      {/* Section: Entreprise et Badge (seulement pour l'admin) */}
-      {isAdmin && (
-        <div
-          style={{
-            padding: "1.5rem",
-            backgroundColor: "#fff",
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            marginBottom: "2rem",
-          }}
-        >
-          <h2 style={{ marginTop: 0, marginBottom: "1rem", fontSize: "1.25rem", fontWeight: "bold" }}>
-            🏢 Entreprise et Badge
-          </h2>
-
-          {companyStatus?.hasCompany && companyStatus.company ? (
-            <div>
-              <div
-                style={{
-                  padding: "1.5rem",
-                  backgroundColor: "#e8f5e9",
-                  border: "2px solid #4caf50",
-                  borderRadius: "8px",
-                  marginBottom: "1rem",
-                }}
-              >
-                <h3 style={{ marginTop: 0, color: "#2e7d32" }}>✅ Entreprise créée</h3>
-                <div style={{ marginTop: "1rem" }}>
-                  <p><strong>Nom:</strong> {companyStatus.company.name || "N/A"}</p>
-                  <p><strong>Pays:</strong> {companyStatus.company.country || "N/A"}</p>
-                  <p><strong>Lien d'autorité:</strong> <a href={companyStatus.company.authority_link || "#"} target="_blank" rel="noopener noreferrer" style={{ color: "#0070f3" }}>{companyStatus.company.authority_link || "N/A"}</a></p>
-                </div>
-              </div>
-
-              {companyStatus.badge ? (
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#fff3cd",
-                    border: "2px solid #ffc107",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#856404" }}>🏅 Badge Public</h3>
-                  <div style={{ marginTop: "1rem" }}>
-                    <p><strong>Numéro du badge:</strong> <code style={{ fontSize: "0.9em", padding: "0.25rem 0.5rem", backgroundColor: "#fff", borderRadius: "4px" }}>{companyStatus.badge.badge_number || "N/A"}</code></p>
-                    <p><strong>Nom de l'entreprise:</strong> {companyStatus.badge.company_name || "N/A"}</p>
-                    {companyStatus.company.badge_id && (
-                      <div style={{ marginTop: "1rem" }}>
-                        <Link
-                          href={getSuiVisionObjectUrl(companyStatus.company.badge_id)}
-                          target="_blank"
-                          style={{
-                            display: "inline-block",
-                            padding: "0.5rem 1rem",
-                            backgroundColor: "#0070f3",
-                            color: "white",
-                            textDecoration: "none",
-                            borderRadius: "4px",
-                            fontSize: "0.875rem",
-                          }}
-                        >
-                          Voir le badge sur SuiVision →
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : companyStatus.company.badge_id ? (
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#fff3cd",
-                    border: "2px solid #ffc107",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#856404" }}>🏅 Badge Public</h3>
-                  <div style={{ marginTop: "1rem" }}>
-                    <p style={{ color: "#856404" }}>Badge ID: <code>{companyStatus.company.badge_id}</code></p>
-                    <div style={{ marginTop: "1rem" }}>
-                      <Link
-                        href={getSuiVisionObjectUrl(companyStatus.company.badge_id)}
-                        target="_blank"
-                        style={{
-                          display: "inline-block",
-                          padding: "0.5rem 1rem",
-                          backgroundColor: "#0070f3",
-                          color: "white",
-                          textDecoration: "none",
-                          borderRadius: "4px",
-                          fontSize: "0.875rem",
-                        }}
-                      >
-                        Voir le badge sur SuiVision →
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div>
-              {!showCreateForm ? (
-                <div style={{ textAlign: "center", padding: "2rem" }}>
-                  <p style={{ marginBottom: "1rem", color: "#666" }}>
-                    Aucune entreprise n'a été créée pour cet AoR.
-                  </p>
-                  <button
-                    onClick={() => setShowCreateForm(true)}
-                    style={{
-                      padding: "0.75rem 1.5rem",
-                      backgroundColor: "#0070f3",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "1rem",
-                    }}
-                  >
-                    Créer une entreprise
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleCreateCompany} style={{ padding: "1.5rem", backgroundColor: "#f8f9fa", borderRadius: "8px" }}>
-                  <h3 style={{ marginTop: 0 }}>Créer une entreprise</h3>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label htmlFor="company-name" style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>
-                      Nom de l'entreprise *
-                    </label>
-                    <input
-                      id="company-name"
-                      type="text"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      required
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        fontSize: "1rem",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label htmlFor="company-country" style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>
-                      Pays *
-                    </label>
-                    <input
-                      id="company-country"
-                      type="text"
-                      value={companyCountry}
-                      onChange={(e) => setCompanyCountry(e.target.value)}
-                      required
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        fontSize: "1rem",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label htmlFor="company-authority-link" style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>
-                      Lien d'autorité *
-                    </label>
-                    <input
-                      id="company-authority-link"
-                      type="url"
-                      value={companyAuthorityLink}
-                      onChange={(e) => setCompanyAuthorityLink(e.target.value)}
-                      required
-                      placeholder="https://..."
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        fontSize: "1rem",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: "1rem" }}>
-                    <button
-                      type="submit"
-                      disabled={createCompanyMutation.isPending}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        backgroundColor: createCompanyMutation.isPending ? "#ccc" : "#28a745",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: createCompanyMutation.isPending ? "not-allowed" : "pointer",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      {createCompanyMutation.isPending ? "Création..." : "Créer l'entreprise"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateForm(false);
-                        setCompanyName("");
-                        setCompanyCountry("");
-                        setCompanyAuthorityLink("");
-                      }}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        backgroundColor: "#6c757d",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Annuler
-                    </button>
-                  </div>
-                  {createCompanyMutation.isError && (
-                    <div
-                      style={{
-                        marginTop: "1rem",
-                        padding: "1rem",
-                        backgroundColor: "#fee",
-                        border: "1px solid #fcc",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      <p style={{ margin: 0, color: "#c00" }}>
-                        <strong>Erreur:</strong>{" "}
-                        {createCompanyMutation.error instanceof Error
-                          ? createCompanyMutation.error.message
-                          : "Une erreur est survenue"}
-                      </p>
-                    </div>
-                  )}
-                  {createCompanyMutation.isSuccess && createCompanyMutation.data && (
-                    <div
-                      style={{
-                        marginTop: "1rem",
-                        padding: "1rem",
-                        backgroundColor: "#efe",
-                        border: "1px solid #cfc",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      <p style={{ margin: 0, color: "#060" }}>
-                        <strong>✅ Entreprise créée avec succès !</strong>
-                      </p>
-                      <div style={{ marginTop: "0.5rem", fontSize: "0.9em" }}>
-                        <p>
-                          <strong>Badge ID:</strong> <code>{createCompanyMutation.data.badge_id}</code>
-                        </p>
-                        <p>
-                          <strong>Transaction:</strong>{" "}
-                          <a
-                            href={getSuiVisionTransactionUrl(createCompanyMutation.data.txDigest)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: "#0070f3", textDecoration: "underline" }}
-                          >
-                            Voir sur SuiVision →
-                          </a>
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </form>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Section: Actions rapides */}
       <div
         style={{
@@ -848,4 +491,3 @@ export default function AoRDashboard() {
     </div>
   );
 }
-

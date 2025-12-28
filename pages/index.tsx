@@ -12,7 +12,6 @@ interface RegistryStatus {
   admin: string | null;
   name: string | null;
   registryId: string;
-  companyId: string | null;
 }
 
 export default function Index() {

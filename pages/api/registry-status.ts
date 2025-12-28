@@ -50,7 +50,6 @@ export default async function handler(
     const fields = content.fields as {
       aor_admin?: string | { vec: string[] } | null;
       aor_name?: number[] | { vec: number[] } | null;
-      company_id?: string | { id: string } | { vec: string[] } | null;
       id?: { id: string };
     };
 
@@ -100,7 +99,6 @@ export default async function handler(
       admin: null,
       name: null,
       registryId: GLOBAL_REGISTRY_ID,
-      companyId: null,
     });
   } catch (error) {
     console.error("Error in registry-status handler:", error);
