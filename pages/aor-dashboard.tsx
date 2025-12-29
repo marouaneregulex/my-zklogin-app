@@ -397,6 +397,19 @@ export default function AoRDashboard() {
         </h2>
         <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
           <Link
+            href="/vendors"
+            style={{
+              display: "inline-block",
+              padding: "0.75rem 1.5rem",
+              backgroundColor: "#28a745",
+              color: "white",
+              textDecoration: "none",
+              borderRadius: "4px",
+            }}
+          >
+            Gérer les vendors
+          </Link>
+          <Link
             href="/registry"
             style={{
               display: "inline-block",

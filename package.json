@@ -6,8 +6,12 @@
     "start": "next start"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
     "@shinami/nextjs-zklogin": "^0.4.1",
+    "@types/nodemailer": "^7.0.4",
+    "firebase": "^12.7.0",
     "next": "latest",
+    "nodemailer": "^7.0.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

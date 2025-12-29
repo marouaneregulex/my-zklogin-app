@@ -84,6 +84,19 @@ export default function Index() {
           >
             Dashboard AoR
           </Link>
+          <Link 
+            href="/vendors"
+            style={{ 
+              display: "inline-block", 
+              padding: "0.75rem 1.5rem", 
+              backgroundColor: "#17a2b8", 
+              color: "white", 
+              textDecoration: "none", 
+              borderRadius: "4px"
+            }}
+          >
+            Gérer les vendors
+          </Link>
           {/* Afficher le bouton seulement si aucun AoR n'est enregistré ET que le statut est chargé */}
           {!isLoadingStatus && !registryStatus?.isRegistered && (
             <Link 
